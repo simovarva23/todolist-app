@@ -14,6 +14,13 @@
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+  // Dopo quanti giorni un'attività attiva diventa "scaduta" (allarme rosso)
+  const DAY_MS = 86400000;
+  const AGING_DAYS = 5;
+  const ageDays = (t) => Math.floor((Date.now() - t.createdAt) / DAY_MS);
+  const isOverdue = (t) => !t.completed && Date.now() - t.createdAt >= AGING_DAYS * DAY_MS;
+  const priorityOf = (t) => t.priority || "normale";
+
   // ---------- STATE ----------
   function defaultState() {
     return {
@@ -118,7 +125,9 @@
     const allTasks = state.sections[currentSection].tasks;
     const filtered = activeCategoryId === "all" ? allTasks : allTasks.filter((t) => t.categoryId === activeCategoryId);
 
-    const active = filtered.filter((t) => !t.completed).sort((a, b) => b.createdAt - a.createdAt);
+    const active = filtered
+      .filter((t) => !t.completed)
+      .sort((a, b) => urgencyRank(b) - urgencyRank(a) || b.createdAt - a.createdAt);
     const completed = filtered.filter((t) => t.completed).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
 
     const activeList = document.getElementById("task-list-active");
@@ -135,15 +144,36 @@
     renderHome(); // keep badges fresh
   }
 
+  // Rango di urgenza: scadute in cima (più vecchie prima), poi per priorità
+  function urgencyRank(t) {
+    if (isOverdue(t)) return 1000 + ageDays(t);
+    const p = priorityOf(t);
+    return p === "urgente" ? 2 : p === "bassa" ? 0 : 1;
+  }
+
+  function makePill(label, className) {
+    const s = document.createElement("span");
+    s.className = className;
+    s.textContent = label;
+    return s;
+  }
+
   function renderTaskItem(task) {
+    const prio = priorityOf(task);
+    const overdue = isOverdue(task);
+
     const el = document.createElement("div");
-    el.className = "task-item" + (task.completed ? " done" : "");
+    el.className =
+      "task-item prio-" + prio + (task.completed ? " done" : "") + (overdue ? " overdue" : "");
     el.dataset.id = task.id;
 
     const check = document.createElement("button");
     check.className = "task-check";
     check.innerHTML = '<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    check.addEventListener("click", () => toggleTask(task.id));
+    check.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleTask(task.id);
+    });
 
     const body = document.createElement("div");
     body.className = "task-body";
@@ -151,15 +181,29 @@
     text.className = "task-text";
     text.textContent = task.text;
     body.appendChild(text);
-    const cat = document.createElement("span");
-    cat.className = "task-cat";
-    cat.textContent = categoryName(task.categoryId);
-    body.appendChild(cat);
+
+    const meta = document.createElement("div");
+    meta.className = "task-meta";
+    meta.appendChild(makePill(categoryName(task.categoryId), "task-cat"));
+    if (!task.completed && prio === "urgente") meta.appendChild(makePill("Urgente", "task-prio urgente"));
+    else if (!task.completed && prio === "bassa") meta.appendChild(makePill("Bassa", "task-prio bassa"));
+    if (overdue) {
+      const n = ageDays(task);
+      meta.appendChild(makePill("⏰ Da " + n + " giorni", "task-flag"));
+    }
+    body.appendChild(meta);
+
+    // Tocca il corpo dell'attività per modificarla
+    body.addEventListener("click", () => openEditSheet(task.id));
 
     const del = document.createElement("button");
     del.className = "task-delete";
+    del.setAttribute("aria-label", "Elimina");
     del.innerHTML = '<svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-    del.addEventListener("click", () => deleteTask(task.id));
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteTask(task.id);
+    });
 
     el.appendChild(check);
     el.appendChild(body);
@@ -183,6 +227,91 @@
     saveState();
     renderSection();
   }
+
+  // ---------- EDIT TASK (modifica testo / priorità / categoria) ----------
+  const editBackdrop = document.getElementById("edit-backdrop");
+  const editSheet = document.getElementById("edit-sheet");
+  const editInput = document.getElementById("edit-input");
+  const editPriorityWrap = document.getElementById("edit-priority");
+  const editCategoryWrap = document.getElementById("edit-category");
+
+  let editingId = null;
+  let editPriority = "normale";
+  let editCategoryId = "generale";
+
+  function renderPriorityPicker() {
+    editPriorityWrap.querySelectorAll(".prio-opt").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.prio === editPriority);
+    });
+  }
+
+  function renderEditCategoryPicker() {
+    editCategoryWrap.innerHTML = "";
+    state.sections[currentSection].categories.forEach((c) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cat-chip" + (editCategoryId === c.id ? " active" : "");
+      btn.textContent = c.name;
+      btn.addEventListener("click", () => {
+        editCategoryId = c.id;
+        renderEditCategoryPicker();
+      });
+      editCategoryWrap.appendChild(btn);
+    });
+  }
+
+  editPriorityWrap.querySelectorAll(".prio-opt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      editPriority = btn.dataset.prio;
+      renderPriorityPicker();
+    });
+  });
+
+  function openEditSheet(id) {
+    const t = state.sections[currentSection].tasks.find((x) => x.id === id);
+    if (!t) return;
+    editingId = id;
+    editInput.value = t.text;
+    editPriority = priorityOf(t);
+    editCategoryId = t.categoryId || "generale";
+    renderPriorityPicker();
+    renderEditCategoryPicker();
+    editBackdrop.classList.add("show");
+    editSheet.classList.add("show");
+    setTimeout(() => editInput.focus(), 300);
+  }
+
+  function closeEditSheet() {
+    editingId = null;
+    editBackdrop.classList.remove("show");
+    editSheet.classList.remove("show");
+  }
+
+  function saveEdit() {
+    const t = state.sections[currentSection].tasks.find((x) => x.id === editingId);
+    if (!t) return closeEditSheet();
+    const newText = editInput.value.trim();
+    if (newText) t.text = newText;
+    t.priority = editPriority;
+    t.categoryId = editCategoryId;
+    saveState();
+    closeEditSheet();
+    renderSection();
+    showToast("Attività aggiornata");
+  }
+
+  document.getElementById("edit-save").addEventListener("click", saveEdit);
+  editInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") saveEdit();
+  });
+  document.getElementById("edit-delete").addEventListener("click", () => {
+    const id = editingId;
+    closeEditSheet();
+    if (id) deleteTask(id);
+  });
+  editBackdrop.addEventListener("click", () => {
+    if (editSheet.classList.contains("show")) closeEditSheet();
+  });
 
   document.getElementById("completed-toggle").addEventListener("click", (e) => {
     e.currentTarget.classList.toggle("open");
@@ -390,6 +519,7 @@
         id: uid(),
         text,
         categoryId: catId,
+        priority: "normale",
         completed: false,
         createdAt: Date.now(),
         completedAt: null,

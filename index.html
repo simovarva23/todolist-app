@@ -128,6 +128,29 @@
     </div>
   </div>
 
+  <!-- ===== SHEET: modifica attività ===== -->
+  <div class="sheet-backdrop" id="edit-backdrop"></div>
+  <div class="edit-sheet" id="edit-sheet">
+    <div class="sheet-handle"></div>
+    <h3>Modifica attività</h3>
+    <input type="text" id="edit-input" placeholder="Testo dell'attività..." autocomplete="off" autocorrect="on">
+
+    <p class="field-label">Priorità</p>
+    <div class="priority-picker" id="edit-priority">
+      <button type="button" class="prio-opt" data-prio="urgente"><span class="prio-dot"></span>Urgente</button>
+      <button type="button" class="prio-opt" data-prio="normale"><span class="prio-dot"></span>Normale</button>
+      <button type="button" class="prio-opt" data-prio="bassa"><span class="prio-dot"></span>Bassa</button>
+    </div>
+
+    <p class="field-label">Categoria</p>
+    <div class="edit-cat-picker" id="edit-category"></div>
+
+    <div class="review-actions edit-actions">
+      <button class="btn-danger" id="edit-delete" type="button">Elimina</button>
+      <button class="btn-primary" id="edit-save" type="button">Salva</button>
+    </div>
+  </div>
+
   <!-- ===== MODALE: nuova categoria ===== -->
   <div class="sheet-backdrop" id="cat-backdrop"></div>
   <div class="category-sheet" id="category-sheet">

@@ -178,13 +178,42 @@ h1,h2,h3,p{ margin:0; }
 .task-item.done .task-check{ background: var(--success); border-color: var(--success); transform: scale(1.05); }
 .task-item.done .task-check svg{ opacity:1; transform: scale(1); }
 
-.task-body{ flex:1; min-width:0; }
+.task-body{ flex:1; min-width:0; cursor:pointer; }
 .task-text{ font-size:16px; line-height:1.3; word-break: break-word; }
 .task-item.done .task-text{ color: var(--text-faint); text-decoration: line-through; }
+.task-meta{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:5px; }
 .task-cat{
-  display:inline-block; margin-top:4px;
   font-size:11.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
   color: var(--accent, var(--text-dim));
+}
+.task-prio{
+  font-size:11px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
+  padding:2px 8px; border-radius:999px;
+}
+.task-prio.urgente{ color:#fff; background: var(--danger); }
+.task-prio.bassa{ color: var(--text-faint); background: var(--surface-3); }
+
+/* Priorità: barra colorata a sinistra della card */
+.task-item{ border-left-width:1px; }
+.task-item.prio-urgente{ border-left:4px solid var(--danger); }
+.task-item.prio-bassa{ border-left:4px solid var(--text-faint); }
+
+/* Attività scaduta (> soglia giorni): allarme rosso pulsante */
+.task-flag{
+  font-size:11px; font-weight:800; letter-spacing:.02em;
+  padding:2px 8px; border-radius:999px;
+  color:#fff; background: var(--danger);
+}
+.task-item.overdue{
+  border-color: var(--danger);
+  border-left:4px solid var(--danger);
+  background: linear-gradient(150deg, rgba(227,103,103,0.18), var(--surface) 60%);
+  animation: overduePulse 1.8s var(--ease) infinite;
+}
+.task-item.overdue .task-text{ color: var(--text); }
+@keyframes overduePulse{
+  0%,100%{ box-shadow: 0 0 0 0 rgba(227,103,103,0.0); }
+  50%{ box-shadow: 0 0 0 3px rgba(227,103,103,0.28); }
 }
 
 .task-delete{
@@ -287,18 +316,51 @@ h1,h2,h3,p{ margin:0; }
 }
 .sheet-backdrop.show{ opacity:1; pointer-events:auto; }
 
-.review-sheet, .category-sheet{
+.review-sheet, .category-sheet, .edit-sheet{
   position:fixed; left:0; right:0; bottom:0; z-index:61;
   background: var(--surface);
   border-radius: 26px 26px 0 0;
   padding: 10px 20px calc(var(--safe-bottom) + 18px);
   transform: translateY(105%);
   transition: transform .32s var(--ease);
-  max-height: 78vh;
+  max-height: 84vh; overflow-y:auto;
   display:flex; flex-direction:column;
   border-top:1px solid var(--border);
 }
-.review-sheet.show, .category-sheet.show{ transform: translateY(0); }
+.review-sheet.show, .category-sheet.show, .edit-sheet.show{ transform: translateY(0); }
+.edit-sheet h3, .category-sheet h3{ font-size:19px; font-weight:700; }
+
+/* Campo modifica */
+#edit-input{
+  height:48px; border-radius:14px; background: var(--surface-2);
+  border:1px solid var(--border); padding:0 16px; font-size:16px; margin-top:14px;
+}
+.field-label{
+  font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+  color: var(--text-faint); margin:16px 2px 8px;
+}
+.priority-picker{ display:flex; gap:8px; }
+.prio-opt{
+  flex:1; display:flex; align-items:center; justify-content:center; gap:7px;
+  padding:11px 6px; border-radius:14px;
+  background: var(--surface-2); border:1px solid var(--border);
+  font-size:14px; font-weight:600; color: var(--text-dim);
+  transition: background .15s, border-color .15s, color .15s;
+}
+.prio-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.prio-opt[data-prio="urgente"] .prio-dot{ background: var(--danger); }
+.prio-opt[data-prio="normale"] .prio-dot{ background: var(--text-dim); }
+.prio-opt[data-prio="bassa"] .prio-dot{ background: var(--text-faint); }
+.prio-opt.active{ color: var(--text); border-color: var(--text-dim); background: var(--surface-3); }
+.prio-opt[data-prio="urgente"].active{ border-color: var(--danger); background: rgba(227,103,103,0.16); color:#fff; }
+
+.edit-cat-picker{ display:flex; flex-wrap:wrap; gap:8px; }
+.edit-actions{ margin-top:22px; }
+.btn-danger{
+  flex:1; height:48px; border-radius:24px; font-weight:700; font-size:15px;
+  background: rgba(227,103,103,0.14); color: var(--danger);
+  border:1px solid rgba(227,103,103,0.35);
+}
 .sheet-handle{
   width:36px; height:5px; border-radius:3px; background: var(--surface-3);
   margin: 6px auto 14px;
