@@ -395,20 +395,56 @@
     window.speechSynthesis.speak(u);
   }
 
-  // J.A.R.V.I.S. che parla: voce neurale di Gemini se disponibile, altrimenti nativa
-  let jarvisAudio = null;
+  // J.A.R.V.I.S. che parla: voce neurale di Gemini via Web Audio (sbloccato al
+  // tocco, così riproduce anche dopo l'attesa), fallback alla voce nativa.
   let speaking = false;
+  let audioPlaying = false;
+  let audioCtx = null;
+  let currentSource = null;
   const speakBtn = document.getElementById("jarvis-speak");
 
+  function ensureAudioCtx() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; }
+    }
+    return audioCtx;
+  }
+  function b64ToArrayBuffer(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
+
   function isJarvisSpeaking() {
-    const audioOn = jarvisAudio && !jarvisAudio.paused && !jarvisAudio.ended;
-    const synthOn = "speechSynthesis" in window && window.speechSynthesis.speaking;
-    return speaking || audioOn || synthOn;
+    return speaking || audioPlaying || ("speechSynthesis" in window && window.speechSynthesis.speaking);
   }
 
   function stopJarvis() {
-    if (jarvisAudio) jarvisAudio.pause();
+    try { if (currentSource) currentSource.stop(); } catch (e) {}
+    currentSource = null;
+    audioPlaying = false;
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  }
+
+  function playWavBase64(b64) {
+    const ctx = ensureAudioCtx();
+    if (!ctx) {
+      const a = new Audio("data:audio/wav;base64," + b64);
+      audioPlaying = true;
+      a.onended = () => (audioPlaying = false);
+      return a.play();
+    }
+    return ctx.decodeAudioData(b64ToArrayBuffer(b64)).then((buf) => {
+      try { if (currentSource) currentSource.stop(); } catch (e) {}
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.onended = () => (audioPlaying = false);
+      src.start();
+      currentSource = src;
+      audioPlaying = true;
+    });
   }
 
   function speakJarvis(text, btn) {
@@ -416,29 +452,20 @@
     stopJarvis();
     if (!aiEnabled()) return speakNative(text);
     if (speaking) return;
+    const ctx = ensureAudioCtx(); // sblocca l'audio DENTRO il gesto dell'utente
+    if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
     speaking = true;
     if (btn) btn.classList.add("loading");
+    const done = () => { speaking = false; if (btn) btn.classList.remove("loading"); };
     fetch(aiEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "speak", text }),
     })
-      .then((r) => {
-        if (!r.ok) throw new Error("tts http " + r.status);
-        return r.json();
-      })
-      .then((d) => {
-        if (!d || !d.audioWav) throw new Error("no audio");
-        jarvisAudio = new Audio("data:audio/wav;base64," + d.audioWav);
-        return jarvisAudio.play();
-      })
-      .catch(() => {
-        speakNative(text); // fallback alla voce del telefono
-      })
-      .finally(() => {
-        speaking = false;
-        if (btn) btn.classList.remove("loading");
-      });
+      .then((r) => { if (!r.ok) throw new Error("tts " + r.status); return r.json(); })
+      .then((d) => { if (!d || !d.audioWav) throw new Error("no audio"); return playWavBase64(d.audioWav); })
+      .then(done)
+      .catch(() => { speakNative(text); done(); });
   }
 
   speakBtn.addEventListener("click", () => {
