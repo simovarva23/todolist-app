@@ -9,9 +9,11 @@
 // dell'app todolist.
 // ===========================================================
 
-// Modello Gemini gratuito. Se dovesse dare errore "model not found",
-// prova a cambiarlo (es. "gemini-2.5-flash" o "gemini-1.5-flash").
-const MODEL = "gemini-2.0-flash";
+// Modello Gemini. "gemini-flash-latest" punta all'ultimo flash consigliato
+// ed è idoneo al piano gratuito. Se dovesse dare errore, apri l'URL del
+// Worker nel browser (richiesta GET) per vedere l'elenco dei modelli
+// disponibili sulla tua chiave e scegline uno da lì.
+const MODEL = "gemini-flash-latest";
 
 const SYSTEM_PROMPT = `Sei un assistente che estrae attività (to-do) da un testo dettato o scritto in italiano, spesso disordinato.
 Regole:

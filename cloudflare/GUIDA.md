@@ -45,6 +45,8 @@ automaticamente. Se l'AI non è raggiungibile, l'app torna da sola all'analisi l
 
 - **Costi:** zero, entro i limiti gratuiti di Gemini e Cloudflare.
 - **Sicurezza:** la chiave resta solo dentro Cloudflare, mai nell'app pubblica.
-- **Cambiare modello:** in `worker.js` puoi modificare la costante `MODEL`
-  (es. `gemini-2.5-flash`) se un modello non fosse disponibile.
+- **Modello:** predefinito `gemini-flash-latest` (idoneo al piano gratuito).
+  Se un modello desse errore, apri l'URL del Worker nel browser (richiesta GET):
+  mostra l'elenco dei modelli disponibili sulla tua chiave. Poi cambia la
+  costante `MODEL` in `worker.js` con uno di quelli.
 - **Disattivare l'AI:** svuota il campo URL nelle impostazioni e Salva.
