@@ -24,8 +24,14 @@
   <!-- ===== HOME: le due sezioni ===== -->
   <section id="view-home" class="view view-home active">
     <header class="home-header">
-      <p class="eyebrow">Oggi</p>
-      <h1 id="home-date"></h1>
+      <p class="eyebrow" id="home-date"></p>
+      <div class="greeting-row">
+        <h1 id="jarvis-hello">Buongiorno</h1>
+        <button class="jarvis-speak" id="jarvis-speak" type="button" aria-label="Ascolta il saluto">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M16 9a3.5 3.5 0 0 1 0 6M18.5 6.5a7 7 0 0 1 0 11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <p class="jarvis-status" id="jarvis-status"></p>
       <button class="btn-settings" id="btn-settings" type="button" aria-label="Impostazioni">
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.6"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H10a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V10a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
@@ -251,7 +257,9 @@
   <div class="category-sheet settings-sheet" id="settings-sheet">
     <div class="sheet-handle"></div>
     <h3>Impostazioni</h3>
-    <p class="sheet-sub">Assistente AI (Google Gemini). Incolla qui l'indirizzo del tuo "ponte" Cloudflare per far ordinare le attività dall'AI.</p>
+    <p class="field-label">Il tuo nome</p>
+    <input type="text" id="settings-name-input" placeholder="Es. Simone" autocomplete="off" spellcheck="false">
+    <p class="sheet-sub" style="margin-top:16px">Assistente AI (Google Gemini). Incolla qui l'indirizzo del tuo "ponte" Cloudflare per far ordinare le attività dall'AI.</p>
     <p class="field-label">URL del Worker AI</p>
     <input type="url" id="settings-ai-input" placeholder="https://....workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false">
     <p class="ai-status off" id="settings-ai-status">○ AI non configurata</p>

@@ -65,6 +65,19 @@ h1,h2,h3,p{ margin:0; }
 
 /* ===================== HOME ===================== */
 .home-header{ padding: 4px 24px 8px; position:relative; }
+.greeting-row{ display:flex; align-items:center; gap:10px; }
+#jarvis-hello{ font-size:27px; font-weight:700; letter-spacing:-0.01em; }
+.jarvis-speak{
+  width:32px; height:32px; border-radius:50%; flex-shrink:0;
+  background: var(--surface-2); color: var(--personale);
+  display:flex; align-items:center; justify-content:center;
+}
+.jarvis-speak svg{ width:17px; height:17px; }
+.jarvis-speak:active{ transform: scale(0.9); }
+.jarvis-status{
+  font-size:14px; color: var(--text-dim); line-height:1.4;
+  margin-top:6px; padding-right:44px;
+}
 .btn-settings{
   position:absolute; top:0; right:18px;
   width:38px; height:38px; border-radius:50%;
@@ -334,9 +347,10 @@ h1,h2,h3,p{ margin:0; }
 .pulse-ring{
   position:absolute; inset:0; border-radius:50%;
   border: 2px solid var(--accent, var(--personale));
-  animation: pulse 2s var(--ease) infinite;
   opacity:0;
 }
+/* Si anima solo quando l'overlay è visibile (niente CPU/batteria sprecata) */
+.listening-overlay.show .pulse-ring{ animation: pulse 2s var(--ease) infinite; }
 .pulse-ring.r2{ animation-delay: .5s; }
 @keyframes pulse{
   0%{ transform: scale(.6); opacity:.7; }
@@ -568,7 +582,8 @@ h1,h2,h3,p{ margin:0; }
 .week-lab{ font-size:11px; color: var(--text-faint); font-weight:600; }
 
 /* ===================== SETTINGS / AI ===================== */
-.settings-sheet #settings-ai-input{
+.settings-sheet #settings-ai-input,
+.settings-sheet #settings-name-input{
   height:48px; border-radius:14px; background: var(--surface-2);
   border:1px solid var(--border); padding:0 16px; font-size:15px; width:100%;
 }

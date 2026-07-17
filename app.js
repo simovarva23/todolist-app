@@ -78,6 +78,7 @@
     viewHome.classList.add("active");
     viewSection.classList.remove("active");
     renderHome();
+    renderGreeting();
   }
 
   function openSection(key) {
@@ -272,6 +273,85 @@
         renderAssistant();
       });
   }
+
+  // ---------- ASSISTENTE "JARVIS": nome utente + saluto ----------
+  const NAME_KEY = "todolist_user_name";
+  const userName = () => (localStorage.getItem(NAME_KEY) || "Simone").trim() || "Simone";
+
+  function greetingTime() {
+    const h = new Date().getHours();
+    if (h < 12) return "Buongiorno";
+    if (h < 18) return "Buon pomeriggio";
+    if (h < 23) return "Buonasera";
+    return "Ancora sveglio";
+  }
+
+  function countActiveAll() {
+    let active = 0, urgent = 0, overdue = 0;
+    ["personale", "lavoro"].forEach((k) => {
+      state.sections[k].tasks.forEach((t) => {
+        if (t.completed) return;
+        active++;
+        if (priorityOf(t) === "urgente") urgent++;
+        if (isOverdue(t)) overdue++;
+      });
+    });
+    return { active, urgent, overdue };
+  }
+
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  // Battute in stile J.A.R.V.I.S.: maggiordomo british, formale, umorismo secco
+  function buildGreeting() {
+    const name = userName();
+    const { active, urgent, overdue } = countActiveAll();
+    const hello = greetingTime() + ", " + name + ".";
+    let status;
+    if (active === 0) {
+      status = pick([
+        "Nessuna attività in sospeso. Un lusso raro, se posso permettermi.",
+        "L'agenda è immacolata. Si goda pure il momento.",
+        "Tutto sotto controllo: niente all'orizzonte.",
+      ]);
+    } else {
+      let s = active === 1 ? "C'è 1 attività in agenda" : "Ci sono " + active + " attività in agenda";
+      if (urgent > 0) s += urgent === 1 ? ", di cui 1 urgente" : ", di cui " + urgent + " urgenti";
+      s += ".";
+      if (overdue > 0) {
+        s += " " + (overdue === 1 ? "Una attende" : overdue + " attendono") + " da giorni: mi permetto di segnalarlo. Con discrezione, s'intende.";
+      } else {
+        s += " " + pick(["Ai suoi ordini.", "Quando desidera, cominciamo.", "Sono operativo."]);
+      }
+      status = s;
+    }
+    return { hello, status };
+  }
+
+  let currentGreeting = { hello: "", status: "" };
+
+  function renderGreeting() {
+    currentGreeting = buildGreeting();
+    document.getElementById("jarvis-hello").textContent = currentGreeting.hello;
+    document.getElementById("jarvis-status").textContent = currentGreeting.status;
+  }
+
+  // Voce nativa del dispositivo (gratis) — J.A.R.V.I.S. che parla
+  function speak(text) {
+    if (!("speechSynthesis" in window)) {
+      showToast("Voce non supportata su questo browser.");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "it-IT";
+    u.rate = 0.98;
+    u.pitch = 0.85; // leggermente più grave, tono da maggiordomo
+    window.speechSynthesis.speak(u);
+  }
+
+  document.getElementById("jarvis-speak").addEventListener("click", () => {
+    speak(currentGreeting.hello + " " + currentGreeting.status);
+  });
 
   // ---------- RENDER: HOME ----------
   function renderHome() {
@@ -909,6 +989,7 @@
       };
     });
     return {
+      nome: userName(),
       oggi: new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" }),
       livello: levelInfo(globalXp()).level,
       rango: levelInfo(globalXp()).rank,
@@ -1069,7 +1150,10 @@
     }
   }
 
+  const setNameInput = document.getElementById("settings-name-input");
+
   function openSettings() {
+    setNameInput.value = userName();
     setInput.value = aiEndpoint();
     refreshAiStatus();
     setBackdrop.classList.add("show");
@@ -1090,10 +1174,13 @@
       showToast("Inserisci un URL valido (https://...)");
       return;
     }
+    const name = setNameInput.value.trim();
+    localStorage.setItem(NAME_KEY, name);
     localStorage.setItem(AI_ENDPOINT_KEY, url);
     refreshAiStatus();
     closeSettings();
-    showToast(url ? "AI attivata" : "AI disattivata");
+    renderGreeting();
+    showToast(url ? "Impostazioni salvate · AI attiva" : "Impostazioni salvate");
   });
 
   // ---------- SERVICE WORKER ----------
