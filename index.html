@@ -26,6 +26,9 @@
     <header class="home-header">
       <p class="eyebrow">Oggi</p>
       <h1 id="home-date"></h1>
+      <button class="btn-settings" id="btn-settings" type="button" aria-label="Impostazioni">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.6"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H10a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V10a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
     </header>
 
     <button class="score-strip" id="open-report" type="button">
@@ -230,6 +233,29 @@
     <div class="review-actions">
       <button class="btn-secondary" id="category-cancel" type="button">Annulla</button>
       <button class="btn-primary" id="category-confirm" type="button">Crea</button>
+    </div>
+  </div>
+
+  <!-- ===== MODALE: impostazioni (AI) ===== -->
+  <div class="sheet-backdrop" id="settings-backdrop"></div>
+  <div class="category-sheet settings-sheet" id="settings-sheet">
+    <div class="sheet-handle"></div>
+    <h3>Impostazioni</h3>
+    <p class="sheet-sub">Assistente AI (Google Gemini). Incolla qui l'indirizzo del tuo "ponte" Cloudflare per far ordinare le attività dall'AI.</p>
+    <p class="field-label">URL del Worker AI</p>
+    <input type="url" id="settings-ai-input" placeholder="https://....workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <p class="ai-status off" id="settings-ai-status">○ AI non configurata</p>
+    <div class="review-actions">
+      <button class="btn-secondary" id="settings-cancel" type="button">Annulla</button>
+      <button class="btn-primary" id="settings-save" type="button">Salva</button>
+    </div>
+  </div>
+
+  <!-- ===== OVERLAY: AI in elaborazione ===== -->
+  <div class="ai-loading" id="ai-loading">
+    <div class="ai-loading-inner">
+      <div class="ai-spinner"></div>
+      <p>L'AI sta ordinando le attività…</p>
     </div>
   </div>
 

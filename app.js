@@ -650,10 +650,18 @@
 
   // ---------- ADD TASKS (via review sheet) ----------
   let pendingReview = [];
+  const PRIO_ORDER = ["urgente", "normale", "bassa"];
+  const PRIO_LABEL = { urgente: "Urgente", normale: "Normale", bassa: "Bassa" };
 
-  function openReview(candidateTexts) {
-    pendingReview = candidateTexts.map((t) => ({ id: uid(), text: t }));
-    if (pendingReview.length === 0) pendingReview = [{ id: uid(), text: "" }];
+  // Normalizza sia stringhe (parser locale) sia oggetti {text, priority} (AI)
+  function toReviewItem(x) {
+    if (typeof x === "string") return { id: uid(), text: x, priority: "normale" };
+    return { id: uid(), text: x.text || "", priority: PRIO_ORDER.includes(x.priority) ? x.priority : "normale" };
+  }
+
+  function openReview(candidates) {
+    pendingReview = (candidates || []).map(toReviewItem);
+    if (pendingReview.length === 0) pendingReview = [{ id: uid(), text: "", priority: "normale" }];
     renderReview();
     document.getElementById("sheet-backdrop").classList.add("show");
     document.getElementById("review-sheet").classList.add("show");
@@ -670,6 +678,19 @@
     pendingReview.forEach((item) => {
       const row = document.createElement("div");
       row.className = "review-item";
+
+      // Pallino priorità: si tocca per cambiarla (urgente → normale → bassa)
+      const prio = document.createElement("button");
+      prio.className = "review-prio prio-" + item.priority;
+      prio.title = PRIO_LABEL[item.priority];
+      prio.setAttribute("aria-label", "Priorità: " + PRIO_LABEL[item.priority]);
+      prio.addEventListener("click", () => {
+        const next = (PRIO_ORDER.indexOf(item.priority) + 1) % PRIO_ORDER.length;
+        item.priority = PRIO_ORDER[next];
+        prio.className = "review-prio prio-" + item.priority;
+        prio.title = PRIO_LABEL[item.priority];
+      });
+
       const input = document.createElement("input");
       input.type = "text";
       input.value = item.text;
@@ -681,6 +702,7 @@
         pendingReview = pendingReview.filter((p) => p.id !== item.id);
         renderReview();
       });
+      row.appendChild(prio);
       row.appendChild(input);
       row.appendChild(rm);
       list.appendChild(row);
@@ -688,7 +710,7 @@
   }
 
   document.getElementById("review-add-manual").addEventListener("click", () => {
-    pendingReview.push({ id: uid(), text: "" });
+    pendingReview.push({ id: uid(), text: "", priority: "normale" });
     renderReview();
     const inputs = document.querySelectorAll("#review-list input");
     if (inputs.length) inputs[inputs.length - 1].focus();
@@ -709,7 +731,7 @@
         id: uid(),
         text,
         categoryId: catId,
-        priority: "normale",
+        priority: PRIO_ORDER.includes(item.priority) ? item.priority : "normale",
         completed: false,
         createdAt: Date.now(),
         completedAt: null,
@@ -722,6 +744,48 @@
     if (added > 0) showToast(added === 1 ? "Attività aggiunta" : `${added} attività aggiunte`);
   });
 
+  // ---------- AI (Google Gemini via Cloudflare Worker) ----------
+  const AI_ENDPOINT_KEY = "todolist_ai_endpoint";
+  const aiEndpoint = () => (localStorage.getItem(AI_ENDPOINT_KEY) || "").trim();
+  const aiEnabled = () => /^https?:\/\//i.test(aiEndpoint());
+
+  function showAiLoading(on) {
+    document.getElementById("ai-loading").classList.toggle("show", on);
+  }
+
+  async function callAI(text) {
+    const res = await fetch(aiEndpoint(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error("AI HTTP " + res.status);
+    const data = await res.json();
+    if (!data || !Array.isArray(data.tasks)) throw new Error("Risposta AI non valida");
+    return data.tasks.filter((t) => t && typeof t.text === "string" && t.text.trim());
+  }
+
+  // Punto unico di ingresso: usa l'AI se configurata, altrimenti il parser locale.
+  function processInput(text) {
+    const val = (text || "").trim();
+    if (!val) return;
+    if (!aiEnabled()) {
+      openReview(parseTasksFromText(val));
+      return;
+    }
+    showAiLoading(true);
+    callAI(val)
+      .then((tasks) => {
+        showAiLoading(false);
+        openReview(tasks.length ? tasks : parseTasksFromText(val));
+      })
+      .catch(() => {
+        showAiLoading(false);
+        showToast("AI non raggiungibile: uso l'analisi locale");
+        openReview(parseTasksFromText(val));
+      });
+  }
+
   // ---------- TEXT INPUT ----------
   const textInput = document.getElementById("text-input");
   document.getElementById("send-btn").addEventListener("click", submitText);
@@ -732,9 +796,8 @@
   function submitText() {
     const val = textInput.value.trim();
     if (!val) return;
-    const tasks = parseTasksFromText(val);
     textInput.value = "";
-    openReview(tasks);
+    processInput(val);
   }
 
   // ---------- VOICE (Web Speech API — gratuito, nativo) ----------
@@ -806,10 +869,7 @@
       try { recognition.stop(); } catch (e) {}
     }
     const text = finalTranscript.trim() || transcriptEl.textContent.trim();
-    if (text) {
-      const tasks = parseTasksFromText(text);
-      openReview(tasks);
-    }
+    if (text) processInput(text);
   }
 
   document.getElementById("mic-btn").addEventListener("click", startListening);
@@ -824,6 +884,49 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
   }
+
+  // ---------- SETTINGS (endpoint AI) ----------
+  const setBackdrop = document.getElementById("settings-backdrop");
+  const setSheet = document.getElementById("settings-sheet");
+  const setInput = document.getElementById("settings-ai-input");
+  const setStatus = document.getElementById("settings-ai-status");
+
+  function refreshAiStatus() {
+    if (aiEnabled()) {
+      setStatus.textContent = "● AI attiva";
+      setStatus.className = "ai-status on";
+    } else {
+      setStatus.textContent = "○ AI non configurata (uso analisi locale)";
+      setStatus.className = "ai-status off";
+    }
+  }
+
+  function openSettings() {
+    setInput.value = aiEndpoint();
+    refreshAiStatus();
+    setBackdrop.classList.add("show");
+    setSheet.classList.add("show");
+  }
+  function closeSettings() {
+    setBackdrop.classList.remove("show");
+    setSheet.classList.remove("show");
+  }
+  document.getElementById("btn-settings").addEventListener("click", openSettings);
+  document.getElementById("settings-cancel").addEventListener("click", closeSettings);
+  setBackdrop.addEventListener("click", () => {
+    if (setSheet.classList.contains("show")) closeSettings();
+  });
+  document.getElementById("settings-save").addEventListener("click", () => {
+    const url = setInput.value.trim();
+    if (url && !/^https?:\/\//i.test(url)) {
+      showToast("Inserisci un URL valido (https://...)");
+      return;
+    }
+    localStorage.setItem(AI_ENDPOINT_KEY, url);
+    refreshAiStatus();
+    closeSettings();
+    showToast(url ? "AI attivata" : "AI disattivata");
+  });
 
   // ---------- SERVICE WORKER ----------
   if ("serviceWorker" in navigator) {
