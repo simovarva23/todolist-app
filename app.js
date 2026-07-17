@@ -111,6 +111,7 @@
   }
   document.getElementById("open-report").addEventListener("click", openReport);
   document.getElementById("report-back").addEventListener("click", closeReport);
+  document.getElementById("assistant-generate").addEventListener("click", generateAssistant);
 
   function sectionStats(key) {
     const tasks = state.sections[key].tasks;
@@ -169,6 +170,107 @@
       col.appendChild(lab);
       wrap.appendChild(col);
     });
+
+    renderAssistant();
+  }
+
+  // ---------- ASSISTENTE AI (report intelligente) ----------
+  let assistantBusy = false;
+
+  function bulletList(arr, cls) {
+    const ul = document.createElement("ul");
+    ul.className = cls;
+    (arr || []).forEach((x) => {
+      if (!x) return;
+      const li = document.createElement("li");
+      li.textContent = String(x);
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  function renderAssistant() {
+    const btn = document.getElementById("assistant-generate");
+    const empty = document.getElementById("assistant-empty");
+    const body = document.getElementById("assistant-body");
+    const meta = document.getElementById("assistant-meta");
+
+    if (!aiEnabled()) {
+      empty.textContent = "Attiva l'assistente AI dalle impostazioni ⚙️ per l'analisi personalizzata.";
+      empty.style.display = "block";
+      btn.style.display = "none";
+      body.innerHTML = "";
+      meta.textContent = "";
+      return;
+    }
+    btn.style.display = "";
+    btn.textContent = assistantBusy ? "Sto analizzando…" : state.aiReport ? "Aggiorna analisi" : "Genera analisi";
+    btn.disabled = assistantBusy;
+
+    const rep = state.aiReport && state.aiReport.report;
+    if (!rep) {
+      empty.textContent = assistantBusy ? "" : "Tocca “Genera analisi”: l'assistente esaminerà le tue attività e ti dirà come stai andando.";
+      empty.style.display = assistantBusy ? "none" : "block";
+      body.innerHTML = "";
+      meta.textContent = "";
+      return;
+    }
+
+    empty.style.display = "none";
+    body.innerHTML = "";
+    if (rep.saluto) {
+      const h = document.createElement("p");
+      h.className = "assistant-hi";
+      h.textContent = rep.saluto;
+      body.appendChild(h);
+    }
+    if (rep.panoramica) {
+      const p = document.createElement("p");
+      p.className = "assistant-text";
+      p.textContent = rep.panoramica;
+      body.appendChild(p);
+    }
+    if (rep.focusOggi && rep.focusOggi.length) {
+      const t = document.createElement("p");
+      t.className = "assistant-h";
+      t.textContent = "🎯 Focus di oggi";
+      body.appendChild(t);
+      body.appendChild(bulletList(rep.focusOggi, "assistant-list focus"));
+    }
+    if (rep.osservazioni && rep.osservazioni.length) {
+      const t = document.createElement("p");
+      t.className = "assistant-h";
+      t.textContent = "🔎 Osservazioni";
+      body.appendChild(t);
+      body.appendChild(bulletList(rep.osservazioni, "assistant-list"));
+    }
+    if (rep.suggerimenti && rep.suggerimenti.length) {
+      const t = document.createElement("p");
+      t.className = "assistant-h";
+      t.textContent = "💡 Suggerimenti";
+      body.appendChild(t);
+      body.appendChild(bulletList(rep.suggerimenti, "assistant-list"));
+    }
+    const when = new Date(state.aiReport.at);
+    meta.textContent = "Aggiornato alle " + when.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function generateAssistant() {
+    if (assistantBusy || !aiEnabled()) return;
+    assistantBusy = true;
+    renderAssistant();
+    callAIReport()
+      .then((report) => {
+        state.aiReport = { at: Date.now(), report };
+        saveState();
+      })
+      .catch(() => {
+        showToast("Assistente non raggiungibile. Riprova.");
+      })
+      .finally(() => {
+        assistantBusy = false;
+        renderAssistant();
+      });
   }
 
   // ---------- RENDER: HOME ----------
@@ -659,9 +761,16 @@
     return { id: uid(), text: x.text || "", priority: PRIO_ORDER.includes(x.priority) ? x.priority : "normale" };
   }
 
-  function openReview(candidates) {
-    pendingReview = (candidates || []).map(toReviewItem);
-    if (pendingReview.length === 0) pendingReview = [{ id: uid(), text: "", priority: "normale" }];
+  function openReview(candidates, meta) {
+    meta = meta || {};
+    pendingReview = (candidates || []).map((c) => {
+      const it = toReviewItem(c);
+      it.source = meta.source || "manuale";
+      it.rawText = meta.rawText || "";
+      return it;
+    });
+    if (pendingReview.length === 0)
+      pendingReview = [{ id: uid(), text: "", priority: "normale", source: "manuale", rawText: "" }];
     renderReview();
     document.getElementById("sheet-backdrop").classList.add("show");
     document.getElementById("review-sheet").classList.add("show");
@@ -710,7 +819,7 @@
   }
 
   document.getElementById("review-add-manual").addEventListener("click", () => {
-    pendingReview.push({ id: uid(), text: "", priority: "normale" });
+    pendingReview.push({ id: uid(), text: "", priority: "normale", source: "manuale", rawText: "" });
     renderReview();
     const inputs = document.querySelectorAll("#review-list input");
     if (inputs.length) inputs[inputs.length - 1].focus();
@@ -735,6 +844,8 @@
         completed: false,
         createdAt: Date.now(),
         completedAt: null,
+        source: item.source || "manuale",
+        rawText: item.rawText || "",
       });
       added++;
     });
@@ -765,24 +876,81 @@
     return data.tasks.filter((t) => t && typeof t.text === "string" && t.text.trim());
   }
 
+  // Raccoglie tutto il contesto (quando/come/cosa/perché) per l'assistente
+  function buildReportPayload() {
+    const now = Date.now();
+    const rel = (ms) => (ms ? Math.round(((now - ms) / DAY_MS) * 10) / 10 : null); // giorni fa
+    const sezioni = {};
+    ["personale", "lavoro"].forEach((key) => {
+      const secTasks = state.sections[key].tasks;
+      const cats = {};
+      state.sections[key].categories.forEach((c) => (cats[c.id] = c.name));
+      const map = (t) => ({
+        testo: t.text,
+        priorita: priorityOf(t),
+        categoria: cats[t.categoryId] || "Generale",
+        inseritaGiorniFa: rel(t.createdAt),
+        origine: t.source || "sconosciuta",
+        fraseOriginale: t.rawText || null,
+        inRitardo: isOverdue(t),
+        completataGiorniFa: t.completed ? rel(t.completedAt) : null,
+      });
+      const active = secTasks.filter((t) => !t.completed).map(map);
+      const completed = secTasks
+        .filter((t) => t.completed)
+        .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))
+        .slice(0, 12)
+        .map(map);
+      sezioni[key] = {
+        xp: state.stats.xp[key],
+        completateTotali: state.stats.completedTotal[key],
+        attive: active,
+        completateRecenti: completed,
+      };
+    });
+    return {
+      oggi: new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" }),
+      livello: levelInfo(globalXp()).level,
+      rango: levelInfo(globalXp()).rank,
+      xpTotali: globalXp(),
+      streakGiorni: effectiveStreak(),
+      recordStreak: state.stats.streak.best,
+      completateOggi: state.stats.history[todayKey()] || 0,
+      sezioni,
+    };
+  }
+
+  async function callAIReport() {
+    const res = await fetch(aiEndpoint(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "report", payload: buildReportPayload() }),
+    });
+    if (!res.ok) throw new Error("AI HTTP " + res.status);
+    const data = await res.json();
+    if (!data || !data.report) throw new Error("Report non valido");
+    return data.report;
+  }
+
   // Punto unico di ingresso: usa l'AI se configurata, altrimenti il parser locale.
-  function processInput(text) {
+  function processInput(text, source) {
     const val = (text || "").trim();
     if (!val) return;
+    const meta = { source: source || "testo", rawText: val };
     if (!aiEnabled()) {
-      openReview(parseTasksFromText(val));
+      openReview(parseTasksFromText(val), meta);
       return;
     }
     showAiLoading(true);
     callAI(val)
       .then((tasks) => {
         showAiLoading(false);
-        openReview(tasks.length ? tasks : parseTasksFromText(val));
+        openReview(tasks.length ? tasks : parseTasksFromText(val), meta);
       })
       .catch(() => {
         showAiLoading(false);
         showToast("AI non raggiungibile: uso l'analisi locale");
-        openReview(parseTasksFromText(val));
+        openReview(parseTasksFromText(val), meta);
       });
   }
 
@@ -797,7 +965,7 @@
     const val = textInput.value.trim();
     if (!val) return;
     textInput.value = "";
-    processInput(val);
+    processInput(val, "testo");
   }
 
   // ---------- VOICE (Web Speech API — gratuito, nativo) ----------
@@ -869,7 +1037,7 @@
       try { recognition.stop(); } catch (e) {}
     }
     const text = finalTranscript.trim() || transcriptEl.textContent.trim();
-    if (text) processInput(text);
+    if (text) processInput(text, "voce");
   }
 
   document.getElementById("mic-btn").addEventListener("click", startListening);

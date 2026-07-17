@@ -44,6 +44,29 @@ const RESPONSE_SCHEMA = {
   required: ["tasks"],
 };
 
+// ---- Modalità REPORT: l'assistente personale "Jarvis" ----
+const REPORT_PROMPT = `Sei l'assistente personale dell'utente, specializzato nella gestione delle sue attività (to-do). Parli in italiano, dando del tu, con tono amichevole, motivante e concreto — come un assistente fidato, mai robotico né moralista.
+Ricevi in JSON lo stato delle attività dell'utente diviso in "personale" e "lavoro", con: testo, priorità, categoria, da quanti giorni è stata inserita (inseritaGiorniFa), come è stata inserita (origine: voce/testo/manuale), la frase originale detta (fraseOriginale), se è in ritardo (inRitardo), e le attività completate di recente. Inoltre: livello, XP, serie di giorni consecutivi (streak), completate oggi.
+Analizza questi dati e produci:
+- "saluto": una frase breve e personale (max 12 parole), adatta al momento della giornata e all'andamento.
+- "panoramica": 2-3 frasi che riassumono come sta andando (carico, equilibrio personale/lavoro, ritmo, streak).
+- "focusOggi": 1-3 attività CONCRETE su cui concentrarsi oggi, citando il testo reale dell'attività; dai precedenza a urgenti e a quelle in ritardo.
+- "osservazioni": 1-4 osservazioni utili basate sui dati (es. attività ferme da giorni, dove tende a procrastinare, temi ricorrenti nelle frasi originali, categorie più cariche). Sii specifico, cita le attività.
+- "suggerimenti": 1-3 consigli pratici e gentili per migliorare o sbloccarsi.
+Regole: NON inventare attività non presenti nei dati. Se non c'è nulla da fare, complimentati e proponi di riposare. Ogni voce di elenco è una frase breve. Niente markdown, solo testo semplice.`;
+
+const REPORT_SCHEMA = {
+  type: "object",
+  properties: {
+    saluto: { type: "string" },
+    panoramica: { type: "string" },
+    focusOggi: { type: "array", items: { type: "string" } },
+    osservazioni: { type: "array", items: { type: "string" } },
+    suggerimenti: { type: "array", items: { type: "string" } },
+  },
+  required: ["saluto", "panoramica", "focusOggi", "osservazioni", "suggerimenti"],
+};
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -83,59 +106,75 @@ export default {
     } catch {
       return json({ error: "JSON non valido" }, 400);
     }
-    const text = (body && body.text ? String(body.text) : "").trim();
-    if (!text) return json({ tasks: [] });
 
-    const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/" +
-      MODEL +
-      ":generateContent?key=" +
-      env.GEMINI_API_KEY;
-
-    const payload = {
-      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: "user", parts: [{ text: "Testo da analizzare:\n" + text }] }],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-      },
-    };
-
-    let g;
-    try {
-      g = await fetch(url, {
+    // Chiama Gemini con un prompt di sistema e uno schema, restituisce il JSON.
+    async function askGemini(systemPrompt, userText, schema, temperature) {
+      const url =
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
+        MODEL +
+        ":generateContent?key=" +
+        env.GEMINI_API_KEY;
+      const payload = {
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userText }] }],
+        generationConfig: {
+          temperature: temperature,
+          responseMimeType: "application/json",
+          responseSchema: schema,
+        },
+      };
+      const g = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-    } catch (e) {
-      return json({ error: "Rete verso Gemini fallita" }, 502);
+      if (!g.ok) {
+        const detail = await g.text();
+        const e = new Error("gemini");
+        e.detail = { status: g.status, detail };
+        throw e;
+      }
+      const data = await g.json();
+      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      return JSON.parse(raw);
     }
 
-    if (!g.ok) {
-      const detail = await g.text();
-      return json({ error: "Gemini ha risposto " + g.status, detail }, 502);
+    // ---- MODALITÀ REPORT (assistente) ----
+    if (body && body.mode === "report") {
+      try {
+        const userText = "Dati attività dell'utente (JSON):\n" + JSON.stringify(body.payload || {});
+        const parsed = await askGemini(REPORT_PROMPT, userText, REPORT_SCHEMA, 0.6);
+        const report = {
+          saluto: String(parsed.saluto || ""),
+          panoramica: String(parsed.panoramica || ""),
+          focusOggi: Array.isArray(parsed.focusOggi) ? parsed.focusOggi.map(String) : [],
+          osservazioni: Array.isArray(parsed.osservazioni) ? parsed.osservazioni.map(String) : [],
+          suggerimenti: Array.isArray(parsed.suggerimenti) ? parsed.suggerimenti.map(String) : [],
+        };
+        return json({ report });
+      } catch (e) {
+        if (e.detail) return json({ error: "Gemini ha risposto " + e.detail.status, detail: e.detail.detail }, 502);
+        return json({ error: "Report non generato" }, 502);
+      }
     }
 
-    const data = await g.json();
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    let parsed;
+    // ---- MODALITÀ ESTRAZIONE TASK (default) ----
+    const text = (body && body.text ? String(body.text) : "").trim();
+    if (!text) return json({ tasks: [] });
     try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return json({ error: "Risposta AI non interpretabile", raw }, 502);
+      const parsed = await askGemini(SYSTEM_PROMPT, "Testo da analizzare:\n" + text, RESPONSE_SCHEMA, 0.2);
+      const tasks = Array.isArray(parsed.tasks)
+        ? parsed.tasks
+            .filter((t) => t && typeof t.text === "string" && t.text.trim())
+            .map((t) => ({
+              text: t.text.trim(),
+              priority: ["urgente", "normale", "bassa"].includes(t.priority) ? t.priority : "normale",
+            }))
+        : [];
+      return json({ tasks });
+    } catch (e) {
+      if (e.detail) return json({ error: "Gemini ha risposto " + e.detail.status, detail: e.detail.detail }, 502);
+      return json({ error: "Risposta AI non interpretabile" }, 502);
     }
-
-    const tasks = Array.isArray(parsed.tasks)
-      ? parsed.tasks
-          .filter((t) => t && typeof t.text === "string" && t.text.trim())
-          .map((t) => ({
-            text: t.text.trim(),
-            priority: ["urgente", "normale", "bassa"].includes(t.priority) ? t.priority : "normale",
-          }))
-      : [];
-
-    return json({ tasks });
   },
 };
