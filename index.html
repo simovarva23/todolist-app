@@ -139,7 +139,12 @@
       <div class="assistant-card">
         <div class="assistant-top">
           <span class="assistant-title">🤖 Assistente</span>
-          <button class="assistant-btn" id="assistant-generate" type="button">Genera analisi</button>
+          <div class="assistant-actions">
+            <button class="assistant-speak" id="assistant-speak" type="button" aria-label="Ascolta l'analisi" style="display:none">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M16 9a3.5 3.5 0 0 1 0 6M18.5 6.5a7 7 0 0 1 0 11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </button>
+            <button class="assistant-btn" id="assistant-generate" type="button">Genera analisi</button>
+          </div>
         </div>
         <p class="assistant-empty" id="assistant-empty">Tocca “Genera analisi” per l'analisi personalizzata.</p>
         <div class="assistant-body" id="assistant-body"></div>

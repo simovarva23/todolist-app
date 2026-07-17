@@ -112,7 +112,8 @@
   }
   document.getElementById("open-report").addEventListener("click", openReport);
   document.getElementById("report-back").addEventListener("click", closeReport);
-  document.getElementById("assistant-generate").addEventListener("click", generateAssistant);
+  document.getElementById("assistant-generate").addEventListener("click", () => generateAssistant(true));
+  document.getElementById("assistant-speak").addEventListener("click", speakAssistant);
 
   function sectionStats(key) {
     const tasks = state.sections[key].tasks;
@@ -178,6 +179,17 @@
   // ---------- ASSISTENTE AI (report intelligente) ----------
   let assistantBusy = false;
 
+  // Trasforma il report in un testo scorrevole da leggere ad alta voce
+  function reportToSpeech(rep) {
+    const parts = [];
+    if (rep.saluto) parts.push(rep.saluto);
+    if (rep.panoramica) parts.push(rep.panoramica);
+    if (rep.focusOggi && rep.focusOggi.length) parts.push("Il focus di oggi: " + rep.focusOggi.join("; ") + ".");
+    if (rep.osservazioni && rep.osservazioni.length) parts.push("Qualche osservazione. " + rep.osservazioni.join(" "));
+    if (rep.suggerimenti && rep.suggerimenti.length) parts.push("I miei suggerimenti. " + rep.suggerimenti.join(" "));
+    return parts.join(" ");
+  }
+
   function bulletList(arr, cls) {
     const ul = document.createElement("ul");
     ul.className = cls;
@@ -192,6 +204,7 @@
 
   function renderAssistant() {
     const btn = document.getElementById("assistant-generate");
+    const speakA = document.getElementById("assistant-speak");
     const empty = document.getElementById("assistant-empty");
     const body = document.getElementById("assistant-body");
     const meta = document.getElementById("assistant-meta");
@@ -200,6 +213,7 @@
       empty.textContent = "Attiva l'assistente AI dalle impostazioni ⚙️ per l'analisi personalizzata.";
       empty.style.display = "block";
       btn.style.display = "none";
+      speakA.style.display = "none";
       body.innerHTML = "";
       meta.textContent = "";
       return;
@@ -209,6 +223,7 @@
     btn.disabled = assistantBusy;
 
     const rep = state.aiReport && state.aiReport.report;
+    speakA.style.display = rep ? "" : "none";
     if (!rep) {
       empty.textContent = assistantBusy ? "" : "Tocca “Genera analisi”: l'assistente esaminerà le tue attività e ti dirà come stai andando.";
       empty.style.display = assistantBusy ? "none" : "block";
@@ -256,7 +271,7 @@
     meta.textContent = "Aggiornato alle " + when.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
   }
 
-  function generateAssistant() {
+  function generateAssistant(autoRead) {
     if (assistantBusy || !aiEnabled()) return;
     assistantBusy = true;
     renderAssistant();
@@ -264,6 +279,7 @@
       .then((report) => {
         state.aiReport = { at: Date.now(), report };
         saveState();
+        if (autoRead) speakJarvis(reportToSpeech(report), document.getElementById("assistant-speak"));
       })
       .catch(() => {
         showToast("Assistente non raggiungibile. Riprova.");
@@ -272,6 +288,14 @@
         assistantBusy = false;
         renderAssistant();
       });
+  }
+
+  // Legge l'analisi ad alta voce (o la ferma se già in corso)
+  function speakAssistant() {
+    if (isJarvisSpeaking()) return stopJarvis();
+    const rep = state.aiReport && state.aiReport.report;
+    if (rep) speakJarvis(reportToSpeech(rep), document.getElementById("assistant-speak"));
+    else generateAssistant(true); // niente report ancora: generala e leggila
   }
 
   // ---------- ASSISTENTE "JARVIS": nome utente + saluto ----------
@@ -376,12 +400,24 @@
   let speaking = false;
   const speakBtn = document.getElementById("jarvis-speak");
 
-  function speakJarvis(text) {
+  function isJarvisSpeaking() {
+    const audioOn = jarvisAudio && !jarvisAudio.paused && !jarvisAudio.ended;
+    const synthOn = "speechSynthesis" in window && window.speechSynthesis.speaking;
+    return speaking || audioOn || synthOn;
+  }
+
+  function stopJarvis() {
+    if (jarvisAudio) jarvisAudio.pause();
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  }
+
+  function speakJarvis(text, btn) {
     if (!text) return;
+    stopJarvis();
     if (!aiEnabled()) return speakNative(text);
     if (speaking) return;
     speaking = true;
-    speakBtn.classList.add("loading");
+    if (btn) btn.classList.add("loading");
     fetch(aiEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -393,8 +429,6 @@
       })
       .then((d) => {
         if (!d || !d.audioWav) throw new Error("no audio");
-        if (jarvisAudio) jarvisAudio.pause();
-        if ("speechSynthesis" in window) window.speechSynthesis.cancel();
         jarvisAudio = new Audio("data:audio/wav;base64," + d.audioWav);
         return jarvisAudio.play();
       })
@@ -403,12 +437,13 @@
       })
       .finally(() => {
         speaking = false;
-        speakBtn.classList.remove("loading");
+        if (btn) btn.classList.remove("loading");
       });
   }
 
   speakBtn.addEventListener("click", () => {
-    speakJarvis(currentGreeting.hello + " " + currentGreeting.status);
+    if (isJarvisSpeaking()) return stopJarvis();
+    speakJarvis(currentGreeting.hello + " " + currentGreeting.status, speakBtn);
   });
 
   // ---------- RENDER: HOME ----------
