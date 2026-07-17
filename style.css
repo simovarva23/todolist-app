@@ -74,6 +74,8 @@ h1,h2,h3,p{ margin:0; }
 }
 .jarvis-speak svg{ width:17px; height:17px; }
 .jarvis-speak:active{ transform: scale(0.9); }
+.jarvis-speak.loading{ animation: speakPulse 1s ease-in-out infinite; }
+@keyframes speakPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.4; } }
 .jarvis-status{
   font-size:14px; color: var(--text-dim); line-height:1.4;
   margin-top:6px; padding-right:44px;

@@ -335,22 +335,80 @@
     document.getElementById("jarvis-status").textContent = currentGreeting.status;
   }
 
-  // Voce nativa del dispositivo (gratis) — J.A.R.V.I.S. che parla
-  function speak(text) {
+  // Sceglie la voce italiana migliore disponibile sul dispositivo
+  let cachedVoices = [];
+  function refreshVoices() {
+    if ("speechSynthesis" in window) cachedVoices = window.speechSynthesis.getVoices() || [];
+  }
+  if ("speechSynthesis" in window) {
+    refreshVoices();
+    window.speechSynthesis.onvoiceschanged = refreshVoices;
+  }
+  function bestItalianVoice() {
+    const it = cachedVoices.filter((v) => /it/i.test(v.lang));
+    if (!it.length) return null;
+    const prefer = [/enhanced/i, /premium/i, /neural/i, /google/i, /siri/i, /alice/i, /federica/i, /luca/i, /elsa/i];
+    for (const rx of prefer) {
+      const m = it.find((v) => rx.test(v.name));
+      if (m) return m;
+    }
+    return it[0];
+  }
+
+  // Voce nativa del dispositivo (fallback gratuito)
+  function speakNative(text) {
     if (!("speechSynthesis" in window)) {
       showToast("Voce non supportata su questo browser.");
       return;
     }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
+    const v = bestItalianVoice();
+    if (v) u.voice = v;
     u.lang = "it-IT";
-    u.rate = 0.98;
+    u.rate = 0.96;
     u.pitch = 0.85; // leggermente più grave, tono da maggiordomo
     window.speechSynthesis.speak(u);
   }
 
-  document.getElementById("jarvis-speak").addEventListener("click", () => {
-    speak(currentGreeting.hello + " " + currentGreeting.status);
+  // J.A.R.V.I.S. che parla: voce neurale di Gemini se disponibile, altrimenti nativa
+  let jarvisAudio = null;
+  let speaking = false;
+  const speakBtn = document.getElementById("jarvis-speak");
+
+  function speakJarvis(text) {
+    if (!text) return;
+    if (!aiEnabled()) return speakNative(text);
+    if (speaking) return;
+    speaking = true;
+    speakBtn.classList.add("loading");
+    fetch(aiEndpoint(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "speak", text }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("tts http " + r.status);
+        return r.json();
+      })
+      .then((d) => {
+        if (!d || !d.audioWav) throw new Error("no audio");
+        if (jarvisAudio) jarvisAudio.pause();
+        if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+        jarvisAudio = new Audio("data:audio/wav;base64," + d.audioWav);
+        return jarvisAudio.play();
+      })
+      .catch(() => {
+        speakNative(text); // fallback alla voce del telefono
+      })
+      .finally(() => {
+        speaking = false;
+        speakBtn.classList.remove("loading");
+      });
+  }
+
+  speakBtn.addEventListener("click", () => {
+    speakJarvis(currentGreeting.hello + " " + currentGreeting.status);
   });
 
   // ---------- RENDER: HOME ----------

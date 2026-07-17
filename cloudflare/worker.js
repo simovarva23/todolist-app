@@ -15,6 +15,11 @@
 // disponibili sulla tua chiave e scegline uno da lì.
 const MODEL = "gemini-flash-latest";
 
+// Modello e voce per la sintesi vocale (voce umana/neurale).
+// Voci maschili profonde adatte a un maggiordomo: "Charon", "Enceladus", "Orus".
+const TTS_MODEL = "gemini-2.5-flash-preview-tts";
+const TTS_VOICE = "Charon";
+
 const SYSTEM_PROMPT = `Sei un assistente che estrae attività (to-do) da un testo dettato o scritto in italiano, spesso disordinato.
 Regole:
 - Restituisci un elenco di attività brevi, chiare e concrete (massimo una riga ciascuna).
@@ -81,6 +86,40 @@ function json(obj, status = 200) {
   });
 }
 
+// Gemini restituisce audio PCM grezzo (16-bit): lo impacchettiamo in WAV
+// così il browser può riprodurlo direttamente.
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+function bytesToBase64(bytes) {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+function pcmToWavBase64(pcmB64, sampleRate) {
+  const pcm = base64ToBytes(pcmB64);
+  const numChannels = 1, bitsPerSample = 16;
+  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+  const blockAlign = (numChannels * bitsPerSample) / 8;
+  const buffer = new ArrayBuffer(44 + pcm.length);
+  const view = new DataView(buffer);
+  let p = 0;
+  const str = (s) => { for (let i = 0; i < s.length; i++) view.setUint8(p++, s.charCodeAt(i)); };
+  const u32 = (v) => { view.setUint32(p, v, true); p += 4; };
+  const u16 = (v) => { view.setUint16(p, v, true); p += 2; };
+  str("RIFF"); u32(36 + pcm.length); str("WAVE");
+  str("fmt "); u32(16); u16(1); u16(numChannels); u32(sampleRate); u32(byteRate); u16(blockAlign); u16(bitsPerSample);
+  str("data"); u32(pcm.length);
+  new Uint8Array(buffer, 44).set(pcm);
+  return bytesToBase64(new Uint8Array(buffer));
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -138,6 +177,54 @@ export default {
       const data = await g.json();
       const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
       return JSON.parse(raw);
+    }
+
+    // ---- MODALITÀ VOCE (sintesi vocale neurale) ----
+    if (body && body.mode === "speak") {
+      const t = (body.text ? String(body.text) : "").trim();
+      if (!t) return json({ error: "testo vuoto" }, 400);
+      try {
+        const url =
+          "https://generativelanguage.googleapis.com/v1beta/models/" +
+          TTS_MODEL +
+          ":generateContent?key=" +
+          env.GEMINI_API_KEY;
+        const payload = {
+          contents: [
+            {
+              parts: [
+                {
+                  text:
+                    "Leggi ad alta voce con tono caldo, elegante, pacato e cortese, da raffinato maggiordomo britannico che parla un italiano impeccabile: " +
+                    t,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: TTS_VOICE } } },
+          },
+        };
+        const g = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!g.ok) {
+          const detail = await g.text();
+          return json({ error: "Gemini TTS " + g.status, detail }, 502);
+        }
+        const data = await g.json();
+        const part = (data?.candidates?.[0]?.content?.parts || []).find((p) => p.inlineData);
+        if (!part) return json({ error: "Nessun audio ricevuto" }, 502);
+        const mime = part.inlineData.mimeType || "";
+        const rate = parseInt((mime.match(/rate=(\d+)/) || [])[1] || "24000", 10);
+        const audioWav = pcmToWavBase64(part.inlineData.data, rate);
+        return json({ audioWav });
+      } catch (e) {
+        return json({ error: "Sintesi vocale fallita" }, 502);
+      }
     }
 
     // ---- MODALITÀ REPORT (assistente) ----
