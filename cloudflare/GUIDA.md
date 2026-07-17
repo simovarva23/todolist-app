@@ -41,6 +41,20 @@ automaticamente. Se l'AI non è raggiungibile, l'app torna da sola all'analisi l
 
 ---
 
+## Voce elegante con ElevenLabs (consigliato)
+
+La voce di Gemini è gratuita ma limitata (~10 al giorno). Per una voce
+umana ed elegante senza quei limiti, aggiungi ElevenLabs:
+
+1. Crea un account gratuito su **https://elevenlabs.io** (non serve carta).
+2. Vai su **My Account → API Keys** (o icona profilo → API key) e **copia** la chiave.
+3. Nel Worker su Cloudflare: **Settings → Variables and Secrets → Add → Secret**
+   - Nome: `ELEVENLABS_API_KEY`  ·  Valore: la chiave copiata  → Deploy.
+4. Fatto: l'app userà automaticamente ElevenLabs (se la chiave manca, torna a Gemini).
+
+Cambiare voce: in `worker.js`, `ELEVEN_VOICE_ID` — prendi un "Voice ID" dalla
+**Voice Library** di ElevenLabs (ci sono anche voci italiane native).
+
 ## Note
 
 - **Costi:** zero, entro i limiti gratuiti di Gemini e Cloudflare.

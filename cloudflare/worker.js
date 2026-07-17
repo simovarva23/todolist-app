@@ -15,10 +15,16 @@
 // disponibili sulla tua chiave e scegline uno da lì.
 const MODEL = "gemini-flash-latest";
 
-// Modello e voce per la sintesi vocale (voce umana/neurale).
-// Voci maschili profonde adatte a un maggiordomo: "Charon", "Enceladus", "Orus".
+// --- Voce di riserva: Gemini TTS (gratis ma solo ~10 richieste/giorno) ---
 const TTS_MODEL = "gemini-2.5-flash-preview-tts";
 const TTS_VOICE = "Charon";
+
+// --- Voce principale: ElevenLabs (elegante e veloce) ---
+// Si attiva se aggiungi il secret ELEVENLABS_API_KEY. Puoi cambiare la voce:
+// prendi un "Voice ID" dalla Voice Library di ElevenLabs (anche voci italiane).
+// Default "George": maschile, caldo, britannico raffinato.
+const ELEVEN_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb";
+const ELEVEN_MODEL = "eleven_multilingual_v2";
 
 const SYSTEM_PROMPT = `Sei un assistente che estrae attività (to-do) da un testo dettato o scritto in italiano, spesso disordinato.
 Regole:
@@ -183,6 +189,39 @@ export default {
     if (body && body.mode === "speak") {
       const t = (body.text ? String(body.text) : "").trim();
       if (!t) return json({ error: "testo vuoto" }, 400);
+
+      // Voce principale: ElevenLabs (se configurata la chiave)
+      if (env.ELEVENLABS_API_KEY) {
+        try {
+          const url =
+            "https://api.elevenlabs.io/v1/text-to-speech/" +
+            ELEVEN_VOICE_ID +
+            "?output_format=mp3_44100_128";
+          const r = await fetch(url, {
+            method: "POST",
+            headers: {
+              "xi-api-key": env.ELEVENLABS_API_KEY,
+              "Content-Type": "application/json",
+              Accept: "audio/mpeg",
+            },
+            body: JSON.stringify({
+              text: t,
+              model_id: ELEVEN_MODEL,
+              voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true },
+            }),
+          });
+          if (!r.ok) {
+            const detail = await r.text();
+            return json({ error: "ElevenLabs " + r.status, detail }, 502);
+          }
+          const buf = new Uint8Array(await r.arrayBuffer());
+          return json({ audio: bytesToBase64(buf), mime: "audio/mpeg" });
+        } catch (e) {
+          return json({ error: "ElevenLabs fallito" }, 502);
+        }
+      }
+
+      // Riserva: Gemini TTS
       try {
         const url =
           "https://generativelanguage.googleapis.com/v1beta/models/" +

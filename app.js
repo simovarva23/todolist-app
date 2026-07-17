@@ -427,10 +427,10 @@
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
   }
 
-  function playWavBase64(b64) {
+  function playAudioBase64(b64, mime) {
     const ctx = ensureAudioCtx();
     if (!ctx) {
-      const a = new Audio("data:audio/wav;base64," + b64);
+      const a = new Audio("data:" + (mime || "audio/wav") + ";base64," + b64);
       audioPlaying = true;
       a.onended = () => (audioPlaying = false);
       return a.play();
@@ -466,7 +466,11 @@
       body: JSON.stringify({ mode: "speak", text }),
     })
       .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then((d) => { if (!d || !d.audioWav) throw new Error("nessun audio"); return playWavBase64(d.audioWav); })
+      .then((d) => {
+        const b64 = d && (d.audio || d.audioWav);
+        if (!b64) throw new Error("nessun audio");
+        return playAudioBase64(b64, d.mime || "audio/wav");
+      })
       .then(done)
       .catch(() => {
         showToast("Voce di Jarvis non disponibile ora — uso la voce del telefono.");
