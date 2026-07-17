@@ -451,7 +451,7 @@
     if (!text) return;
     stopJarvis();
     if (!aiEnabled()) {
-      showToast("⚙️ Voce AI spenta: manca l'URL del Worker");
+      showToast("Attiva l'assistente AI in ⚙️ per la voce di Jarvis.");
       return speakNative(text);
     }
     if (speaking) return;
@@ -468,8 +468,8 @@
       .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then((d) => { if (!d || !d.audioWav) throw new Error("nessun audio"); return playWavBase64(d.audioWav); })
       .then(done)
-      .catch((e) => {
-        showToast("Voce AI fallita: " + ((e && e.message) || e));
+      .catch(() => {
+        showToast("Voce di Jarvis non disponibile ora — uso la voce del telefono.");
         speakNative(text);
         done();
       });
