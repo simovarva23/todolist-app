@@ -450,7 +450,10 @@
   function speakJarvis(text, btn) {
     if (!text) return;
     stopJarvis();
-    if (!aiEnabled()) return speakNative(text);
+    if (!aiEnabled()) {
+      showToast("⚙️ Voce AI spenta: manca l'URL del Worker");
+      return speakNative(text);
+    }
     if (speaking) return;
     const ctx = ensureAudioCtx(); // sblocca l'audio DENTRO il gesto dell'utente
     if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
@@ -462,10 +465,14 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "speak", text }),
     })
-      .then((r) => { if (!r.ok) throw new Error("tts " + r.status); return r.json(); })
-      .then((d) => { if (!d || !d.audioWav) throw new Error("no audio"); return playWavBase64(d.audioWav); })
+      .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then((d) => { if (!d || !d.audioWav) throw new Error("nessun audio"); return playWavBase64(d.audioWav); })
       .then(done)
-      .catch(() => { speakNative(text); done(); });
+      .catch((e) => {
+        showToast("Voce AI fallita: " + ((e && e.message) || e));
+        speakNative(text);
+        done();
+      });
   }
 
   speakBtn.addEventListener("click", () => {
