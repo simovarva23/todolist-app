@@ -58,8 +58,22 @@ function json(obj, status = 200) {
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method !== "POST") return json({ error: "Usa POST" }, 405);
     if (!env.GEMINI_API_KEY) return json({ error: "GEMINI_API_KEY non configurata" }, 500);
+
+    // Diagnostica: apri l'URL del Worker nel browser (GET) per vedere
+    // l'elenco dei modelli utilizzabili dalla tua chiave.
+    if (request.method === "GET") {
+      const lurl =
+        "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + env.GEMINI_API_KEY;
+      const lr = await fetch(lurl);
+      const ld = await lr.json();
+      const models = (ld.models || [])
+        .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
+        .map((m) => m.name.replace("models/", ""));
+      return json({ modelloAttuale: MODEL, modelliDisponibili: models });
+    }
+
+    if (request.method !== "POST") return json({ error: "Usa POST" }, 405);
 
     let body;
     try {
