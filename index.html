@@ -28,6 +28,24 @@
       <h1 id="home-date"></h1>
     </header>
 
+    <button class="score-strip" id="open-report" type="button">
+      <div class="score-level">
+        <span class="score-lvl-num" id="hs-level">1</span>
+        <span class="score-lvl-word">LIV</span>
+      </div>
+      <div class="score-mid">
+        <div class="score-top">
+          <span class="score-rank" id="hs-rank">Novizio</span>
+          <span class="score-xp" id="hs-xp">0 XP</span>
+        </div>
+        <div class="score-bar"><div class="score-bar-fill" id="hs-bar"></div></div>
+      </div>
+      <div class="score-streak">
+        <span class="fire">🔥</span>
+        <span id="hs-streak">0</span>
+      </div>
+    </button>
+
     <div class="home-tiles">
       <button class="tile tile-personale" data-section="personale" type="button">
         <div class="tile-top">
@@ -98,6 +116,58 @@
     </div>
   </section>
 
+  <!-- ===== REPORT: progressi / gamification ===== -->
+  <section id="view-report" class="view">
+    <header class="section-header">
+      <button class="btn-round" id="report-back" type="button" aria-label="Indietro">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M15 5 8 12l7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h2>I tuoi progressi</h2>
+      <span class="btn-round" style="visibility:hidden"></span>
+    </header>
+
+    <div class="report-scroll">
+      <div class="level-card">
+        <div class="level-badge" id="rp-level">1</div>
+        <div class="level-info">
+          <p class="level-rank" id="rp-rank">Novizio</p>
+          <div class="score-bar big"><div class="score-bar-fill" id="rp-bar"></div></div>
+          <p class="level-xp" id="rp-xp">0 / 100 XP</p>
+        </div>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-card"><span class="stat-big" id="rp-streak">0</span><span class="stat-label">🔥 Serie</span></div>
+        <div class="stat-card"><span class="stat-big" id="rp-best">0</span><span class="stat-label">🏆 Record</span></div>
+        <div class="stat-card"><span class="stat-big" id="rp-today">0</span><span class="stat-label">✅ Oggi</span></div>
+      </div>
+
+      <div class="sect-card personale">
+        <div class="sect-head"><span class="sect-dot"></span><span class="sect-name">Personale</span><span class="sect-xp" id="rp-personale-xp">0 XP · Liv. 1</span></div>
+        <div class="sect-grid">
+          <div><span class="sg-num" id="rp-personale-done">0</span><span class="sg-lab">completate</span></div>
+          <div><span class="sg-num" id="rp-personale-active">0</span><span class="sg-lab">da fare</span></div>
+          <div><span class="sg-num" id="rp-personale-rate">0%</span><span class="sg-lab">completamento</span></div>
+        </div>
+      </div>
+
+      <div class="sect-card lavoro">
+        <div class="sect-head"><span class="sect-dot"></span><span class="sect-name">Lavoro</span><span class="sect-xp" id="rp-lavoro-xp">0 XP · Liv. 1</span></div>
+        <div class="sect-grid">
+          <div><span class="sg-num" id="rp-lavoro-done">0</span><span class="sg-lab">completate</span></div>
+          <div><span class="sg-num" id="rp-lavoro-active">0</span><span class="sg-lab">da fare</span></div>
+          <div><span class="sg-num" id="rp-lavoro-rate">0%</span><span class="sg-lab">completamento</span></div>
+        </div>
+      </div>
+
+      <div class="week-card">
+        <p class="card-title">Ultimi 7 giorni</p>
+        <div class="week-bars" id="rp-week"></div>
+      </div>
+      <div class="scroll-spacer"></div>
+    </div>
+  </section>
+
   <!-- ===== OVERLAY: ascolto in corso ===== -->
   <div class="listening-overlay" id="listening-overlay">
     <div class="listening-inner">
@@ -164,6 +234,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
+  <div class="xp-pop" id="xp-pop"></div>
 </div>
 
 <script src="app.js"></script>

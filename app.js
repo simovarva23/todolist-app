@@ -22,12 +22,22 @@
   const priorityOf = (t) => t.priority || "normale";
 
   // ---------- STATE ----------
+  function defaultStats() {
+    return {
+      xp: { personale: 0, lavoro: 0 },
+      completedTotal: { personale: 0, lavoro: 0 },
+      streak: { current: 0, best: 0, lastDate: null },
+      history: {}, // "yyyy-mm-dd": numero di completamenti quel giorno
+    };
+  }
+
   function defaultState() {
     return {
       sections: {
         personale: { categories: [{ id: "generale", name: "Generale" }], tasks: [] },
         lavoro: { categories: [{ id: "generale", name: "Generale" }], tasks: [] },
       },
+      stats: defaultStats(),
     };
   }
 
@@ -37,6 +47,13 @@
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
       if (!parsed.sections || !parsed.sections.personale || !parsed.sections.lavoro) return defaultState();
+      // migrazione: assicura che il blocco statistiche esista e sia completo
+      const d = defaultStats();
+      parsed.stats = Object.assign(d, parsed.stats || {});
+      parsed.stats.xp = Object.assign(d.xp, parsed.stats.xp || {});
+      parsed.stats.completedTotal = Object.assign(d.completedTotal, parsed.stats.completedTotal || {});
+      parsed.stats.streak = Object.assign(d.streak, parsed.stats.streak || {});
+      parsed.stats.history = parsed.stats.history || {};
       return parsed;
     } catch (e) {
       return defaultState();
@@ -79,6 +96,81 @@
   });
   document.getElementById("btn-back").addEventListener("click", goHome);
 
+  // ---------- NAVIGATION: REPORT ----------
+  const viewReport = document.getElementById("view-report");
+
+  function openReport() {
+    renderReport();
+    viewReport.classList.add("active");
+    viewHome.classList.remove("active");
+  }
+  function closeReport() {
+    viewReport.classList.remove("active");
+    viewHome.classList.add("active");
+    renderHome();
+  }
+  document.getElementById("open-report").addEventListener("click", openReport);
+  document.getElementById("report-back").addEventListener("click", closeReport);
+
+  function sectionStats(key) {
+    const tasks = state.sections[key].tasks;
+    const active = tasks.filter((t) => !t.completed).length;
+    const done = state.stats.completedTotal[key];
+    const total = done + active;
+    const rate = total > 0 ? Math.round((done / total) * 100) : 0;
+    return { xp: state.stats.xp[key], level: levelInfo(state.stats.xp[key]).level, done, active, rate };
+  }
+
+  function renderReport() {
+    const info = levelInfo(globalXp());
+    document.getElementById("rp-level").textContent = info.level;
+    document.getElementById("rp-rank").textContent = info.rank;
+    document.getElementById("rp-bar").style.width = info.pct + "%";
+    document.getElementById("rp-xp").textContent = info.into + " / " + info.need + " XP  ·  " + globalXp() + " totali";
+
+    document.getElementById("rp-streak").textContent = effectiveStreak();
+    document.getElementById("rp-best").textContent = state.stats.streak.best;
+    document.getElementById("rp-today").textContent = state.stats.history[todayKey()] || 0;
+
+    ["personale", "lavoro"].forEach((key) => {
+      const s = sectionStats(key);
+      document.getElementById(`rp-${key}-xp`).textContent = s.xp + " XP · Liv. " + s.level;
+      document.getElementById(`rp-${key}-done`).textContent = s.done;
+      document.getElementById(`rp-${key}-active`).textContent = s.active;
+      document.getElementById(`rp-${key}-rate`).textContent = s.rate + "%";
+    });
+
+    // Grafico ultimi 7 giorni
+    const wrap = document.getElementById("rp-week");
+    wrap.innerHTML = "";
+    const days = [];
+    for (let i = 6; i >= 0; i--) days.push(Date.now() - i * DAY_MS);
+    const counts = days.map((ms) => state.stats.history[dateKey(ms)] || 0);
+    const max = Math.max(1, ...counts);
+    const labels = ["D", "L", "M", "M", "G", "V", "S"];
+    days.forEach((ms, i) => {
+      const col = document.createElement("div");
+      col.className = "week-col";
+      const bar = document.createElement("div");
+      bar.className = "week-bar" + (counts[i] > 0 ? " has" : "");
+      bar.style.height = Math.round((counts[i] / max) * 100) + "%";
+      if (counts[i] > 0) bar.title = counts[i] + " completate";
+      const cap = document.createElement("span");
+      cap.className = "week-cap";
+      cap.textContent = counts[i] > 0 ? counts[i] : "";
+      const lab = document.createElement("span");
+      lab.className = "week-lab";
+      lab.textContent = labels[new Date(ms).getDay()];
+      const track = document.createElement("div");
+      track.className = "week-track";
+      track.appendChild(bar);
+      col.appendChild(cap);
+      col.appendChild(track);
+      col.appendChild(lab);
+      wrap.appendChild(col);
+    });
+  }
+
   // ---------- RENDER: HOME ----------
   function renderHome() {
     const d = new Date();
@@ -91,6 +183,14 @@
       document.getElementById(`sub-${key}`).textContent =
         tasks.length === 0 ? "tutto fatto" : tasks.length === 1 ? "1 attività da fare" : `${tasks.length} attività da fare`;
     });
+
+    // Barra punteggio in home
+    const info = levelInfo(globalXp());
+    document.getElementById("hs-level").textContent = info.level;
+    document.getElementById("hs-rank").textContent = info.rank;
+    document.getElementById("hs-xp").textContent = globalXp() + " XP";
+    document.getElementById("hs-bar").style.width = info.pct + "%";
+    document.getElementById("hs-streak").textContent = effectiveStreak();
   }
 
   // ---------- RENDER: SECTION ----------
@@ -211,13 +311,103 @@
     return el;
   }
 
+  // ---------- GAMIFICATION (punti, livelli, streak) ----------
+  const XP_PER_LEVEL = 100;
+  const RANKS = [
+    { min: 1, name: "Novizio" },
+    { min: 3, name: "Apprendista" },
+    { min: 6, name: "Esperto" },
+    { min: 10, name: "Maestro" },
+    { min: 16, name: "Campione" },
+    { min: 25, name: "Leggenda" },
+  ];
+
+  function levelInfo(xp) {
+    const level = Math.floor(xp / XP_PER_LEVEL) + 1;
+    const into = xp % XP_PER_LEVEL;
+    let rank = RANKS[0].name;
+    for (const r of RANKS) if (level >= r.min) rank = r.name;
+    return { level, into, need: XP_PER_LEVEL, pct: Math.round((into / XP_PER_LEVEL) * 100), rank };
+  }
+
+  const globalXp = () => state.stats.xp.personale + state.stats.xp.lavoro;
+  const dateKey = (ms) => {
+    const d = new Date(ms);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  };
+  const todayKey = () => dateKey(Date.now());
+
+  // Streak "effettivo": vale solo se l'ultimo giorno è oggi o ieri
+  function effectiveStreak() {
+    const s = state.stats.streak;
+    if (!s.lastDate) return 0;
+    if (s.lastDate === todayKey() || s.lastDate === dateKey(Date.now() - DAY_MS)) return s.current;
+    return 0;
+  }
+
+  function updateStreakOnComplete() {
+    const s = state.stats.streak;
+    const today = todayKey();
+    if (s.lastDate === today) return; // già contato oggi
+    const yesterday = dateKey(Date.now() - DAY_MS);
+    s.current = s.lastDate === yesterday ? s.current + 1 : 1;
+    s.lastDate = today;
+    if (s.current > s.best) s.best = s.current;
+  }
+
+  function xpForTask(t) {
+    let xp = 10; // base
+    if (priorityOf(t) === "urgente") xp += 10; // urgenti valgono di più
+    if (!isOverdue(t) && Date.now() - t.createdAt < DAY_MS) xp += 5; // bonus "in giornata"
+    return xp;
+  }
+
   function toggleTask(id) {
     const t = state.sections[currentSection].tasks.find((t) => t.id === id);
     if (!t) return;
-    t.completed = !t.completed;
-    t.completedAt = t.completed ? Date.now() : null;
-    saveState();
-    renderSection();
+
+    if (!t.completed) {
+      // ---- COMPLETAMENTO: assegna punti ----
+      const beforeLevel = levelInfo(globalXp()).level;
+      t.completed = true;
+      t.completedAt = Date.now();
+      const gained = xpForTask(t);
+      t.xpAwarded = gained;
+      state.stats.xp[currentSection] += gained;
+      state.stats.completedTotal[currentSection] += 1;
+      const d = todayKey();
+      state.stats.history[d] = (state.stats.history[d] || 0) + 1;
+      updateStreakOnComplete();
+      saveState();
+      renderSection();
+      showXpPop(gained);
+      const afterLevel = levelInfo(globalXp()).level;
+      if (afterLevel > beforeLevel) {
+        setTimeout(() => showToast("🎉 Livello " + afterLevel + " — " + levelInfo(globalXp()).rank + "!"), 700);
+      }
+    } else {
+      // ---- ANNULLAMENTO: restituisci i punti ----
+      t.completed = false;
+      const refund = t.xpAwarded || 0;
+      state.stats.xp[currentSection] = Math.max(0, state.stats.xp[currentSection] - refund);
+      state.stats.completedTotal[currentSection] = Math.max(0, state.stats.completedTotal[currentSection] - 1);
+      const d = todayKey();
+      if (state.stats.history[d]) state.stats.history[d] = Math.max(0, state.stats.history[d] - 1);
+      t.xpAwarded = 0;
+      t.completedAt = null;
+      saveState();
+      renderSection();
+    }
+  }
+
+  // Popup "+XP" stile videogioco
+  function showXpPop(amount) {
+    const el = document.getElementById("xp-pop");
+    el.textContent = "+" + amount + " XP";
+    el.classList.remove("show");
+    // forza il restart dell'animazione
+    void el.offsetWidth;
+    el.classList.add("show");
   }
 
   function deleteTask(id) {
